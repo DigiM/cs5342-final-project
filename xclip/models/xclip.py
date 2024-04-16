@@ -8,8 +8,8 @@ from .cct import CrossFrameCommunicationTransformer
 import sys
 import warnings
 sys.path.append("../")
-from clip.model import CLIP,LayerNorm,Transformer
-import clip
+from xclip.clip.model import CLIP,LayerNorm,Transformer
+from xclip.clip import clip 
 
 class XCLIP(CLIP):
     def __init__(self,

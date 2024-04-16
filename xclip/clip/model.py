@@ -9,7 +9,7 @@ from torch import nn
 from einops import rearrange
 from torch.utils.checkpoint import checkpoint_sequential
 import math
-import clip
+import xclip.clip
 
 
 def drop_path(x, drop_prob: float = 0., training: bool = False):

@@ -3,7 +3,7 @@ import torch
 from torch import nn
 import sys
 sys.path.append("../")
-from clip.model import QuickGELU
+from xclip.clip.model import QuickGELU
 
 
 class MulitHeadAttention(nn.Module):

@@ -1,8 +1,9 @@
 import numpy
 import torch.distributed as dist
 import torch
-import clip
 import os
+
+from xclip.clip import clip
 
 
 def reduce_tensor(tensor, n=None):

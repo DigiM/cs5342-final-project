@@ -5,7 +5,7 @@ from torch import nn
 from torch.utils.checkpoint import checkpoint_sequential
 import sys
 sys.path.append("../")
-from clip.model import LayerNorm, QuickGELU, DropPath
+from xclip.clip.model import LayerNorm, QuickGELU, DropPath
 
 
 class CrossFramelAttentionBlock(nn.Module):

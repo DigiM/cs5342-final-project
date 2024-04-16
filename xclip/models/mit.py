@@ -4,7 +4,7 @@ from collections import OrderedDict
 from timm.models.layers import trunc_normal_
 import sys
 sys.path.append("../")
-from clip.model import QuickGELU
+from xclip.clip.model import QuickGELU
 
 
 class ResidualAttentionBlock(nn.Module):

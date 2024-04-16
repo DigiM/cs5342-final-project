@@ -1,0 +1,16 @@
+DATA:
+    ROOT: './video'
+    TRAIN_FILE: './etc/train.txt'
+    VAL_FILE: './etc/val.txt'
+    DATASET: animal_kingdom
+    NUM_FRAMES: 8
+    NUM_CLASSES: 140
+    LABEL_LIST: './etc/action_labels.csv'
+    CATEGORY_LIST: './etc/animal_labels.csv'
+MODEL:
+    ARCH: ViT-B/16
+TRAIN:
+    BATCH_SIZE: 16
+    ACCUMULATION_STEPS: 4
+    EPOCHS: 30
+    LR: 2.e-6
