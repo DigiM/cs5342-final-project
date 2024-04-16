@@ -2044,7 +2044,7 @@ class SampleFrames:
             start_index = results['start_index']
             frame_inds = np.concatenate(frame_inds) + start_index
 
-        results['frame_inds'] = frame_inds.astype(np.int)
+        results['frame_inds'] = frame_inds.astype(np.int64)
         results['clip_len'] = self.clip_len
         results['frame_interval'] = self.frame_interval
         results['num_clips'] = self.num_clips

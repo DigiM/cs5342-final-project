@@ -14,7 +14,7 @@ class CategoryPredictor(nn.Module):
 
         self.logit_scale = clip_model.logit_scale
         self.dtype = clip_model.dtype
-
+        
     def forward(self, image):
         image_features = self.image_encoder(image.type(self.dtype))
 

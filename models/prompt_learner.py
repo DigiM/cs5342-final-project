@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 
 from xclip.clip import clip
-from xclip.clip.simple_tokenizer import SimpleTokenizer as _tokenizer
+from xclip.clip.simple_tokenizer import SimpleTokenizer
 
 class TextEncoder(nn.Module):
     def __init__(self, clip_model):
@@ -66,7 +66,8 @@ class PromptLearner(nn.Module):
         self.ctx = nn.Parameter(ctx_vectors)  # to be optimized
 
         # classnames = [name.replace("_", " ") for name in classnames]
-        name_lens = [len(_tokenizer.encode(name)) for name in classnames]
+        tokenizer = SimpleTokenizer()
+        name_lens = [len(tokenizer.encode(name)) for name in classnames]
         prompts = [prompt_prefix + " " + name + "." for name in classnames]
 
         tokenized_prompts = torch.cat([clip.tokenize(p) for p in prompts])

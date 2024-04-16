@@ -19,12 +19,12 @@ class CategoryVideoDataset(BaseDataset):
     @property
     def classes(self):
         classes_all = pd.read_csv(self.labels_file)
-        return classes_all['name'].tolist()
+        return classes_all.values.tolist()
 
     @property
     def categories(self):
         categories_all = pd.read_csv(self.categories_file)
-        return categories_all['name'].tolist()
+        return categories_all.values.tolist()
 
     def load_annotations(self):
         """Load annotation file to get video information."""
@@ -34,10 +34,11 @@ class CategoryVideoDataset(BaseDataset):
         video_infos = []
         with open(self.ann_file, 'r') as fin:
             for line in fin:
-                line_split = line.strip().split()
+                line_split = line.strip().split(' ')
                 if self.multi_class:
                     assert self.num_classes is not None
                     filename, category, label = line_split
+                    if category == '': continue # case for KDIANBXG.mp4, no given annotations
                     category = list(map(int, category.strip().split(',')))
                     label = list(map(int, label.strip().split(',')))
                 else:
@@ -73,17 +74,17 @@ def build_dataloader(logger, config):
         dict(type='ToTensor', keys=['imgs', 'label']),
     ]
         
-    
+
     train_data = CategoryVideoDataset(ann_file=config.DATA.TRAIN_FILE, data_prefix=config.DATA.ROOT,
                               labels_file=config.DATA.LABEL_LIST, categories_file=config.DATA.CATEGORY_LIST,
-                              multi_class=True, pipeline=train_pipeline)
-    num_tasks = dist.get_world_size()
-    global_rank = dist.get_rank()
-    sampler_train = torch.utils.data.DistributedSampler(
-        train_data, num_replicas=num_tasks, rank=global_rank, shuffle=True
-    )
+                              multi_class=True, num_classes=config.DATA.NUM_CLASSES, pipeline=train_pipeline)
+    # num_tasks = dist.get_world_size()
+    # global_rank = dist.get_rank()
+    # sampler_train = torch.utils.data.DistributedSampler(
+    #     train_data, num_replicas=num_tasks, rank=global_rank, shuffle=True
+    # )
     train_loader = DataLoader(
-        train_data, sampler=sampler_train,
+        train_data, sampler=SubsetRandomSampler(np.arange(1, len(train_data), 1)),
         batch_size=config.TRAIN.BATCH_SIZE,
         num_workers=16,
         pin_memory=True,
@@ -108,8 +109,10 @@ def build_dataloader(logger, config):
     if config.TEST.NUM_CLIP > 1:
         val_pipeline[1] = dict(type='SampleFrames', clip_len=1, frame_interval=1, num_clips=config.DATA.NUM_FRAMES, multiview=config.TEST.NUM_CLIP)
     
-    val_data = CategoryVideoDataset(ann_file=config.DATA.VAL_FILE, data_prefix=config.DATA.ROOT, labels_file=config.DATA.LABEL_LIST, pipeline=val_pipeline)
-    indices = np.arange(dist.get_rank(), len(val_data), dist.get_world_size())
+    val_data = CategoryVideoDataset(ann_file=config.DATA.VAL_FILE, data_prefix=config.DATA.ROOT, 
+                                    labels_file=config.DATA.LABEL_LIST, categories_file=config.DATA.CATEGORY_LIST,
+                                    multi_class=True, num_classes=config.DATA.NUM_CLASSES, pipeline=val_pipeline)
+    indices = np.arange(1, len(val_data), 1)
     sampler_val = SubsetRandomSampler(indices)
     val_loader = DataLoader(
         val_data, sampler=sampler_val,

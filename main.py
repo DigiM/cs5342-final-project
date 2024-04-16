@@ -68,8 +68,9 @@ def main(config):
                         )
     model = model.cuda()
 
-    clip_model, _ = clip.load(name='ViT-B/16')
-    category_pred_model = CategoryPredictor(clip_model, train_data.categories)
+    clip_model, _ = clip.load(None, name='ViT-B/16', jit=False, logger=logger)
+    categories = [category for _, category in train_data.categories]
+    category_pred_model = CategoryPredictor(clip_model, categories).to(device)
 
     mixup_fn = None
     if config.AUG.MIXUP > 0:
@@ -88,7 +89,7 @@ def main(config):
     lr_scheduler = build_scheduler(config, optimizer, len(train_loader))
     # if config.TRAIN.OPT_LEVEL != 'O0':
     #     model, optimizer = amp.initialize(models=model, optimizers=optimizer, opt_level=config.TRAIN.OPT_LEVEL)
-    model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[config.LOCAL_RANK], broadcast_buffers=False, find_unused_parameters=False)
+    # model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[config.LOCAL_RANK], broadcast_buffers=False, find_unused_parameters=False)
 
     start_epoch, max_accuracy = 0, 0.0
 
@@ -115,7 +116,7 @@ def main(config):
         return
 
     for epoch in range(start_epoch, config.TRAIN.EPOCHS):
-        train_loader.sampler.set_epoch(epoch)
+        # train_loader.sampler.set_epoch(epoch)
         train_one_epoch(epoch, model, category_pred_model, criterion, optimizer, lr_scheduler, train_loader, text_labels, category_labels, config, mixup_fn)
 
         acc1 = validate(val_loader, text_labels, category_labels, model, category_pred_model, config)
@@ -123,8 +124,8 @@ def main(config):
         is_best = acc1 > max_accuracy
         max_accuracy = max(max_accuracy, acc1)
         logger.info(f'Max accuracy: {max_accuracy:.2f}%')
-        if dist.get_rank() == 0 and (epoch % config.SAVE_FREQ == 0 or epoch == (config.TRAIN.EPOCHS - 1)):
-            epoch_saving(config, epoch, model.module, max_accuracy, optimizer, lr_scheduler, logger, config.OUTPUT, is_best)
+        # if dist.get_rank() == 0 and (epoch % config.SAVE_FREQ == 0 or epoch == (config.TRAIN.EPOCHS - 1)):
+        #     epoch_saving(config, epoch, model.module, max_accuracy, optimizer, lr_scheduler, logger, config.OUTPUT, is_best)
 
     config.defrost()
     config.TEST.NUM_CLIP = 4
@@ -156,7 +157,8 @@ def train_one_epoch(epoch, model, category_pred_model, criterion, optimizer, lr_
         label_id = label_id.reshape(-1)
         images = images.view((-1,config.DATA.NUM_FRAMES,3)+images.size()[-2:])
 
-        category_weights = category_pred_model(images)
+        # for category prediction, we will just use the first image from each video in the batch.
+        category_weights = category_pred_model(images[:, 0, :, :, :])
         category_weights = category_weights.softmax(dim=-1)
 
         if mixup_fn is not None:
@@ -272,11 +274,12 @@ if __name__ == '__main__':
     else:
         rank = -1
         world_size = -1
-    torch.cuda.set_device(args.local_rank)
-    torch.distributed.init_process_group(backend='nccl', init_method='env://', world_size=world_size, rank=rank)
-    torch.distributed.barrier(device_ids=[args.local_rank])
+    # torch.cuda.set_device(args.local_rank)
+    # torch.distributed.init_process_group(backend='nccl', init_method='env://', world_size=world_size, rank=rank)
+    # torch.distributed.barrier(device_ids=[args.local_rank])
 
-    seed = config.SEED + dist.get_rank()
+    # seed = config.SEED + dist.get_rank()
+    seed = config.SEED
     torch.manual_seed(seed)
     np.random.seed(seed)
     random.seed(seed)
@@ -286,12 +289,15 @@ if __name__ == '__main__':
     Path(config.OUTPUT).mkdir(parents=True, exist_ok=True)
     
     # logger
-    logger = create_logger(output_dir=config.OUTPUT, dist_rank=dist.get_rank(), name=f"{config.MODEL.ARCH}")
+    # logger = create_logger(output_dir=config.OUTPUT, dist_rank=dist.get_rank(), name=f"{config.MODEL.ARCH}")
+    logger = create_logger(output_dir=config.OUTPUT, name=f"{config.MODEL.ARCH}")
     logger.info(f"working dir: {config.OUTPUT}")
     
     # save config 
-    if dist.get_rank() == 0:
-        logger.info(config)
-        shutil.copy(args.config, config.OUTPUT)
+    # if dist.get_rank() == 0:
+    #     logger.info(config)
+    #     shutil.copy(args.config, config.OUTPUT)
+    logger.info(config)
+    shutil.copy(args.config, config.OUTPUT)
 
     main(config)
