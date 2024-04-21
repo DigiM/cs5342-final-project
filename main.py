@@ -17,12 +17,12 @@ import torch.nn as nn
 from pathlib import Path
 from timm.loss import LabelSmoothingCrossEntropy, SoftTargetCrossEntropy
 
-from xclip.clip import clip
 from xclip.datasets.blending import CutmixMixupBlending
-from xclip.models import xclip
 from xclip.utils.logger import create_logger
 from xclip.utils.optimizer import build_optimizer, build_scheduler
 from xclip.utils.tools import AverageMeter, reduce_tensor, epoch_saving, load_checkpoint, generate_text, auto_resume_helper
+
+import clip
 
 from datasets.build_category import build_dataloader
 from models import category_xclip
@@ -66,9 +66,9 @@ def main(config):
                          use_cache=config.MODEL.FIX_TEXT,
                          logger=logger,
                         )
-    model = model.cuda()
+    model.to(device)
 
-    clip_model, _ = clip.load(None, name='ViT-B/16', jit=False, logger=logger)
+    clip_model, _ = clip.load(name='ViT-B/16')
     categories = [category for _, category in train_data.categories]
     category_pred_model = CategoryPredictor(clip_model, categories).to(device)
 
@@ -137,6 +137,8 @@ def main(config):
 
 
 def train_one_epoch(epoch, model, category_pred_model, criterion, optimizer, lr_scheduler, train_loader, text_labels, category_labels, config, mixup_fn):
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
     model.train()
     optimizer.zero_grad()
     
@@ -147,14 +149,13 @@ def train_one_epoch(epoch, model, category_pred_model, criterion, optimizer, lr_
     start = time.time()
     end = time.time()
     
-    texts = text_labels.cuda(non_blocking=True)
-    categories = category_labels.cuda(non_blocking=True)
-    
-    for idx, batch_data in enumerate(train_loader):
+    texts = text_labels.to(device, non_blocking=True)
+    categories = category_labels.to(device, non_blocking=True)
 
-        images = batch_data["imgs"].cuda(non_blocking=True)
-        label_id = batch_data["label"].cuda(non_blocking=True)
-        label_id = label_id.reshape(-1)
+    for idx, batch_data in enumerate(train_loader):
+        images = batch_data["imgs"].to(device, non_blocking=True)
+        label_id = batch_data["label"].to(device, non_blocking=True)
+        # label_id = label_id.reshape(-1)
         images = images.view((-1,config.DATA.NUM_FRAMES,3)+images.size()[-2:])
 
         # for category prediction, we will just use the first image from each video in the batch.
@@ -188,7 +189,8 @@ def train_one_epoch(epoch, model, category_pred_model, criterion, optimizer, lr_
             optimizer.step()
             lr_scheduler.step_update(epoch * num_steps + idx)
 
-        torch.cuda.synchronize()
+        if device == 'cuda':
+            torch.cuda.synchronize()
         
         tot_loss_meter.update(total_loss.item(), len(label_id))
         batch_time.update(time.time() - end)

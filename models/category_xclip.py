@@ -49,7 +49,8 @@ class CategoryXCLIP(XCLIP):
 
         category_features = self.encode_text(categories)
         category_features = category_features.unsqueeze(0).expand(b, -1, -1)
-        category_features = torch.einsum('bij,bjk->bik', category_features, category_weights)
+        category_weights = category_weights.unsqueeze(1)
+        category_features = torch.einsum('bij,bjk->bik', category_weights,  category_features)
         
 
         if self.use_cache:
@@ -59,6 +60,7 @@ class CategoryXCLIP(XCLIP):
         
         video_features = video_features.unsqueeze(1)
         video_features = video_features + self.prompts_generators[0](video_features, category_features)
+        video_features = video_features.squeeze(1)
         text_features = text_features.unsqueeze(0).expand(b, -1, -1)
         text_features = text_features + self.prompts_generators[1](text_features, category_features)
 

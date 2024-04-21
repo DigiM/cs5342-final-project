@@ -51,7 +51,9 @@ class BaseMiniBatchBlending(metaclass=ABCMeta):
                 the shape of (B, 1, num_classes) and all elements are in range
                 [0, 1].
         """
-        one_hot_label = one_hot(label, num_classes=self.num_classes, on_value=self.on_value, off_value=self.off_value, device=label.device)
+        # For multi class, shouldn't do another one_hot
+        # one_hot_label = one_hot(label, num_classes=self.num_classes, on_value=self.on_value, off_value=self.off_value, device=label.device)
+        one_hot_label = label
 
         mixed_imgs, mixed_label = self.do_blending(imgs, one_hot_label,
                                                    **kwargs)
