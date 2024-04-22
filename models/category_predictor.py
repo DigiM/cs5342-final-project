@@ -1,3 +1,4 @@
+import torch
 import torch.nn as nn
 
 from .prompt_learner import TextEncoder, PromptLearner

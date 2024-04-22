@@ -1,0 +1,20 @@
+DATA:
+    ROOT: './video'
+    TRAIN_FILE: './etc/train.csv'
+    VAL_FILE: './etc/val.csv'
+    DATASET: animal_kingdom
+    NUM_FRAMES: 4
+    NUM_CLASSES: 140
+    LABEL_LIST: './etc/action_labels.csv'
+    CATEGORY_LIST: './etc/animal_labels_107.csv'
+MODEL:
+    ARCH: ViT-B/16
+TRAIN:
+    BATCH_SIZE: 8
+    ACCUMULATION_STEPS: 4
+    EPOCHS: 10
+    LR: 2.e-6
+TEST:
+    ONLY_TEST: true
+PRINT_FREQ: 3
+OUTPUT: etc/output_test_107_zeroshot

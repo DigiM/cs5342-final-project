@@ -41,7 +41,8 @@ class CategoryXCLIP(XCLIP):
             use_cache, use_checkpoint
         )
 
-        self.prompts_generators = [self.prompts_generator, VideoSpecificPrompt(layers=prompts_layers, embed_dim=embed_dim, alpha=prompts_alpha)]
+        device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        self.prompts_generators = [self.prompts_generator.to(device), VideoSpecificPrompt(layers=prompts_layers, embed_dim=embed_dim, alpha=prompts_alpha).to(device)]
 
     def forward(self, image, text, categories, category_weights):
         b = image.shape[0]

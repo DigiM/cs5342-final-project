@@ -39,7 +39,7 @@ def parse_option():
         default=None,
         nargs='+',
     )
-    parser.add_argument('--output', type=str, default="exp")
+    parser.add_argument('--output', type=str)
     parser.add_argument('--resume', type=str)
     parser.add_argument('--pretrained', type=str)
     parser.add_argument('--only_test', action='store_true')
@@ -68,7 +68,7 @@ def main(config):
                         )
     model.to(device)
 
-    clip_model, _ = clip.load(name='ViT-B/16')
+    clip_model, _ = clip.load(name='ViT-B/16', device="cpu")
     categories = [category for _, category in train_data.categories]
     category_pred_model = CategoryPredictor(clip_model, categories).to(device)
 
@@ -104,14 +104,14 @@ def main(config):
             logger.info(f'no checkpoint found in {config.OUTPUT}, ignoring auto resume')
 
     if config.MODEL.RESUME:
-        start_epoch, max_accuracy = load_checkpoint(config, model.module, optimizer, lr_scheduler, logger)
+        start_epoch, max_accuracy = load_checkpoint(config, model, optimizer, lr_scheduler, logger)
 
 
     text_labels = generate_text(train_data)
     category_labels = generate_categories(train_data)
     
     if config.TEST.ONLY_TEST:
-        acc1 = validate(val_loader, text_labels, model, config)
+        acc1 = validate(val_loader, text_labels, category_labels, model, category_pred_model, config)
         logger.info(f"Accuracy of the network on the {len(val_data)} test videos: {acc1:.1f}%")
         return
 
@@ -126,6 +126,8 @@ def main(config):
         logger.info(f'Max accuracy: {max_accuracy:.2f}%')
         # if dist.get_rank() == 0 and (epoch % config.SAVE_FREQ == 0 or epoch == (config.TRAIN.EPOCHS - 1)):
         #     epoch_saving(config, epoch, model.module, max_accuracy, optimizer, lr_scheduler, logger, config.OUTPUT, is_best)
+        if epoch % config.SAVE_FREQ == 0 or epoch == (config.TRAIN.EPOCHS - 1):
+            epoch_saving(config, epoch, model, max_accuracy, optimizer, lr_scheduler, logger, config.OUTPUT, is_best)
 
     config.defrost()
     config.TEST.NUM_CLIP = 4
@@ -159,8 +161,9 @@ def train_one_epoch(epoch, model, category_pred_model, criterion, optimizer, lr_
         images = images.view((-1,config.DATA.NUM_FRAMES,3)+images.size()[-2:])
 
         # for category prediction, we will just use the first image from each video in the batch.
-        category_weights = category_pred_model(images[:, 0, :, :, :])
-        category_weights = category_weights.softmax(dim=-1)
+        with torch.no_grad():
+            category_weights = category_pred_model(images[:, 0, :, :, :])
+            category_weights = category_weights.softmax(dim=-1)
 
         if mixup_fn is not None:
             images, label_id = mixup_fn(images, label_id)
@@ -211,33 +214,42 @@ def train_one_epoch(epoch, model, category_pred_model, criterion, optimizer, lr_
 
 
 @torch.no_grad()
-def validate(val_loader, text_labels, model, config):
+def validate(val_loader, text_labels, category_labels, model, category_pred_model, config):
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
     model.eval()
     
     acc1_meter, acc5_meter = AverageMeter(), AverageMeter()
     with torch.no_grad():
-        text_inputs = text_labels.cuda()
+        text_inputs = text_labels.to(device)
+        categories = category_labels.to(device)
         logger.info(f"{config.TEST.NUM_CLIP * config.TEST.NUM_CROP} views inference")
         for idx, batch_data in enumerate(val_loader):
             _image = batch_data["imgs"]
             label_id = batch_data["label"]
-            label_id = label_id.reshape(-1)
+            filename = batch_data["filename"]
 
             b, tn, c, h, w = _image.size()
             t = config.DATA.NUM_FRAMES
             n = tn // t
             _image = _image.view(b, n, t, c, h, w)
-           
-            tot_similarity = torch.zeros((b, config.DATA.NUM_CLASSES)).cuda()
+            label_id = label_id.view(b, -1)
+            filename = np.array(filename).transpose()
+            filename = [''.join(x) for x in filename]
+            tot_similarity = torch.zeros((b, config.DATA.NUM_CLASSES)).to(device)
             for i in range(n):
                 image = _image[:, i, :, :, :, :] # [b,t,c,h,w]
-                label_id = label_id.cuda(non_blocking=True)
-                image_input = image.cuda(non_blocking=True)
+                label_id = label_id.to(device, non_blocking=True)
+                image_input = image.to(device, non_blocking=True)
+
+                # for category prediction, we will just use the first image.
+                category_weights = category_pred_model(image_input[:, 0, :, :, :])
+                category_weights = category_weights.softmax(dim=-1)
 
                 if config.TRAIN.OPT_LEVEL == 'O2':
                     image_input = image_input.half()
                 
-                output = model(image_input, text_inputs)
+                output = model(image_input, text_inputs, categories, category_weights)
                 
                 similarity = output.view(b, -1).softmax(dim=-1)
                 tot_similarity += similarity
@@ -245,10 +257,12 @@ def validate(val_loader, text_labels, model, config):
             values_1, indices_1 = tot_similarity.topk(1, dim=-1)
             values_5, indices_5 = tot_similarity.topk(5, dim=-1)
             acc1, acc5 = 0, 0
+
             for i in range(b):
-                if indices_1[i] == label_id[i]:
+                labels = label_id[i].nonzero().view(-1)
+                if indices_1[i] in labels:
                     acc1 += 1
-                if label_id[i] in indices_5[i]:
+                if len(np.intersect1d(indices_5[i].cpu(), labels.cpu())) > 0:
                     acc5 += 1
            
             acc1_meter.update(float(acc1) / b * 100, b)
@@ -257,9 +271,10 @@ def validate(val_loader, text_labels, model, config):
                 logger.info(
                     f'Test: [{idx}/{len(val_loader)}]\t'
                     f'Acc@1: {acc1_meter.avg:.3f}\t'
+                    f'Acc@5: {acc5_meter.avg:.3f}\t'
                 )
-    acc1_meter.sync()
-    acc5_meter.sync()
+    # acc1_meter.sync()
+    # acc5_meter.sync()
     logger.info(f' * Acc@1 {acc1_meter.avg:.3f} Acc@5 {acc5_meter.avg:.3f}')
     return acc1_meter.avg
 

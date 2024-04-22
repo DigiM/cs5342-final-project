@@ -32,7 +32,7 @@ animal_labels_modified = animal_labels.copy()
 # Only for Sub-Class
 animal_labels_modified['name'] = animal_labels_modified['name'].map(lambda x: x.split(' / ')[0])
 
-animal_labels_modified.to_csv('etc/animal_labels.csv', index_label='i')
+animal_labels_modified.to_csv('etc/animal_labels_107.csv', index_label='i')
 
 animal_mapping = animal.loc[:, ['Animal', category_col]] \
     .join(
